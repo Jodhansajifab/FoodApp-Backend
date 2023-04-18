@@ -2,7 +2,8 @@ import express  from 'express';
 import mongoose  from'mongoose';
 import bodyParser from 'body-parser';
 import * as dotenv from "dotenv";
-import Food from './mongodb/models/post.js';
+import Food from './mongodb/models/food.js';
+import Order from './mongodb/models/order.js';
 
 dotenv.config();
 
@@ -18,92 +19,153 @@ app.get("/", async (req, res) => {
   res.send("Welcome to Food App");
 });
 
-
 app.get('/food', async (req, res) => {
   const { type, maxdeliverytime } = req.query;
-
-  try {
-    let foods;
-
-    if (type && maxdeliverytime) {
-      foods = await Food.find({
-        type: type,
-        deliveryTime: { $lte: maxdeliverytime },
-      });
-    } else if (type) {
-      foods = await Food.find({ type: type });
-    } else {
-      foods = await Food.find();
-    }
-
-    res.send(foods);
-  } catch (err) {
-    res.status(500).send(err);
+  const query = Food.find();
+  if (type) {
+    query.where('type', type);
   }
+  if (maxdeliverytime) {
+    query.where('deliveryTime').lte(parseInt(maxdeliverytime));
+  }
+  const foodItems = await query.exec();
+  res.json(foodItems);
 });
 
 app.get('/food/:id', async (req, res) => {
   const id = req.params.id;
-
   try {
-    const food = await Food.findById(id);
-
-    if (!food) {
-      return res.status(404).send();
+    const foodItem = await Food.findById(id);
+    if (foodItem) {
+      res.json(foodItem);
+    } else {
+      res.status(404).json({ error: `Food item with ID ${id} not found` });
     }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    res.send(food);
-  } catch (err) {
-    res.status(500).send(err);
+
+app.get('/food', async (req, res) => {
+  const { type, maxdeliverytime } = req.query;
+  const query = Food.find();
+  if (type) {
+    query.where('type', type);
+  }
+  if (maxdeliverytime) {
+    query.where('deliveryTime').lte(parseInt(maxdeliverytime));
+  }
+  const foodItems = await query.exec();
+  res.json(foodItems);
+});
+
+
+app.get('/food/:id', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const foodItem = await Food.findById(id);
+    if (foodItem) {
+      res.json(foodItem);
+    } else {
+      res.status(404).json({ error: `Food item with ID ${id} not found` });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/food', async (req, res) => {
-  const food = new Food(req.body);
-
+  const { name, type, deliveryTime, price } = req.body;
+  const foodItem = new Food({ name, type, deliveryTime, price });
   try {
-    await food.save();
-    res.status(201).send(food);
-  } catch (err) {
-    res.status(400).send(err);
+    const savedItem = await foodItem.save();
+    res.status(201).json(savedItem);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
 app.put('/food/:id', async (req, res) => {
   const id = req.params.id;
-
+  const { name, type, deliveryTime, price } = req.body;
   try {
-    const food = await Food.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!food) {
-      return res.status(404).send();
+    const foodItem = await Food.findByIdAndUpdate(id, { name, type, deliveryTime, price }, { new: true });
+    if (foodItem) {
+      res.json(foodItem);
+    } else {
+      res.status(404).json({ error: `Food item with ID ${id} not found` });
     }
-
-    res.send(food);
-  } catch (err) {
-    res.status(400).send(err);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.delete('/food/:id', async (req, res) => {
-  const id = req.params.id;
-
   try {
-    const food = await Food.findByIdAndDelete(id);
-
-    if (!food) {
-      return res.status(404).send();
+    const deletedFood = await Food.findByIdAndDelete(req.params.id);
+    if (!deletedFood) {
+      return res.status(404).send({ message: 'Food not found' });
     }
-
-    res.send(food);
-  } catch (err) {
-    res.status(500).send(err);
+    res.send({ message: 'Food deleted successfully' });
+  } catch (error) {
+    res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
+app.post('/food/order', async (req, res) => {
+  try {
+    const { foodId } = req.body;
+    const food = await Food.findById(foodId);
+    if (!food) {
+      return res.status(404).send({ message: 'Food not found' });
+    }
+    const order = new Order({ foodId, status: 'Placed' });
+    await order.save();
+    res.send({ message: 'Order placed successfully', order });
+  } catch (error) {
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
+app.put('/food/order/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const order = await Order.findByIdAndUpdate(id, { status }, { new: true });
+    if (!order) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+    res.send({ message: 'Order status updated successfully', order });
+  } catch (error) {
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
+app.put('/food/order/cancelled/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const order = await Order.findByIdAndUpdate(id, { status }, { new: true });
+    if (!order) {
+      return res.status(404).send({ message: 'Order not found' });
+    }
+    res.send({ message: 'Order status updated successfully', order });
+  } catch (error) {
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
+app.get('/food/orders', async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = status ? { status } : {};
+    const orders = await Order.find(query);
+    res.send({ orders });
+  } catch (error) {
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
 
 const startServer = async () => {
     try {
